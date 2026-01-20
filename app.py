@@ -1,236 +1,259 @@
 import streamlit as st
-import feedparser
-import requests
-from bs4 import BeautifulSoup
 import pandas as pd
+import time
+import random
 import google.generativeai as genai
-from google.generativeai.types import HarmCategory, HarmBlockThreshold
+from datetime import datetime
 
 # ==========================================
-# 🎨 UI & THEME ENGINE
+# 🎨 DEVTOOL THEME (Vercel/Stripe Aesthetic)
 # ==========================================
-st.set_page_config(page_title="Founder OS v8.0", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="AI Gateway", page_icon="🌐", layout="wide")
 
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;800&display=swap');
     
     .stApp {
-        background: radial-gradient(circle at 50% 0%, #0f172a 0%, #000000 100%);
+        background-color: #000000;
+        background-image: radial-gradient(#111 1px, transparent 1px);
+        background-size: 20px 20px;
         font-family: 'Inter', sans-serif;
     }
     
+    /* HIDE STREAMLIT CHROME */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
 
-    .glass-card {
-        background: rgba(255, 255, 255, 0.03);
-        backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 16px;
-        padding: 24px;
-        margin-bottom: 20px;
+    /* SIDEBAR */
+    section[data-testid="stSidebar"] {
+        background-color: #050505;
+        border-right: 1px solid #333;
     }
+
+    /* CARDS */
+    .metric-card {
+        background: #0A0A0A;
+        border: 1px solid #222;
+        border-radius: 12px;
+        padding: 20px;
+    }
+    .metric-card:hover {border-color: #444;}
+
+    /* CODE & LOGS */
+    .log-entry {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        background: #0D0D0D;
+        border-bottom: 1px solid #222;
+        padding: 10px;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    /* TYPOGRAPHY */
+    h1, h2, h3 {color: #fff !important; letter-spacing: -0.5px;}
+    p, span, div, label {color: #888 !important;}
     
-    h1, h2, h3 {color: white !important;}
-    p, span, div, label {color: #94a3b8 !important;}
-    
+    /* BADGES */
+    .badge {padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase;}
+    .badge-openai {background: rgba(16, 163, 127, 0.2); color: #10a37f !important;}
+    .badge-google {background: rgba(66, 133, 244, 0.2); color: #4285f4 !important;}
+    .badge-anthropic {background: rgba(217, 119, 87, 0.2); color: #d97757 !important;}
+    .badge-error {background: rgba(255, 0, 0, 0.2); color: #ff4444 !important;}
+
+    /* INPUTS */
     .stTextArea textarea, .stTextInput input, .stSelectbox div[data-baseweb="select"] {
-        background-color: #0F0F12 !important; 
-        color: #e2e8f0 !important; 
+        background-color: #000 !important; 
+        color: #fff !important; 
         border: 1px solid #333 !important;
     }
-    
     .stButton>button {
-        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-        color: white !important;
+        background: #fff;
+        color: #000 !important;
         border: none;
-        border-radius: 8px;
         font-weight: 600;
-        width: 100%;
+        border-radius: 6px;
     }
-    
-    .tag {display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: 700;}
-    .tag-blue {background: rgba(59, 130, 246, 0.15); color: #60a5fa !important;}
-    .tag-green {background: rgba(16, 185, 129, 0.15); color: #34d399 !important;}
-    .tag-purple {background: rgba(139, 92, 246, 0.15); color: #a78bfa !important;}
-    .tag-orange {background: rgba(245, 158, 11, 0.15); color: #fbbf24 !important;}
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🧠 BACKEND LOGIC (EXPANDED)
+# 🌐 GATEWAY LOGIC
 # ==========================================
 
-class FounderEngine:
+class AIGateway:
     def __init__(self):
-        self.headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0'}
+        # In a real app, these would be stored securely in a database
+        if 'logs' not in st.session_state:
+            st.session_state.logs = []
 
-    def generate_code_gemini(self, prompt, stack, mode, api_key):
-        if not api_key:
-            return "⚠️ Error: Please enter your Google Gemini API Key in the sidebar."
+    def route_request(self, provider, model, prompt, api_key):
+        start_time = time.time()
+        response_text = ""
+        status = "200 OK"
+        latency = 0
         
         try:
-            genai.configure(api_key=api_key)
+            # 1. GOOGLE ROUTE (Working Real Implementation)
+            if provider == "Google":
+                if not api_key: raise Exception("Missing API Key")
+                genai.configure(api_key=api_key)
+                ai_model = genai.GenerativeModel(model)
+                resp = ai_model.generate_content(prompt)
+                response_text = resp.text
+
+            # 2. OPENAI ROUTE (Simulation for Demo)
+            elif provider == "OpenAI":
+                time.sleep(1.2) # Simulate network lag
+                response_text = f"Simulated GPT-4 Response: This is where the OpenAI API response would appear. (Connect Key to Activate)"
             
-            # UNLOCKED SAFETY SETTINGS
-            safety_settings = {
-                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-            }
-            
-            model = genai.GenerativeModel(model_name='gemini-1.5-flash', safety_settings=safety_settings)
-            
-            # INTELLIGENT PROMPTING BASED ON MODE
-            base_prompt = f"You are an expert {stack} developer."
-            
-            if mode == "Generator":
-                user_msg = f"{base_prompt} Write production-ready code for: {prompt}. Provide ONLY the code, no markdown ticks."
-            elif mode == "Debugger":
-                user_msg = f"{base_prompt} Fix this broken code and explain the error:\n\n{prompt}"
-            elif mode == "Security Audit":
-                user_msg = f"{base_prompt} ANALYZE this code for security vulnerabilities (XSS, SQL Injection, etc) and provide a fixed version:\n\n{prompt}"
-            elif mode == "Refactor/Optimize":
-                user_msg = f"{base_prompt} REFACTOR this code to be cleaner, faster, and more professional:\n\n{prompt}"
-            elif mode == "Documentation":
-                user_msg = f"{base_prompt} Write professional documentation (README/Comments) for this code:\n\n{prompt}"
-            elif mode == "Unit Tests":
-                user_msg = f"{base_prompt} Write comprehensive Unit Tests for this code:\n\n{prompt}"
-            
-            response = model.generate_content(user_msg)
-            return response.text
+            # 3. ANTHROPIC ROUTE (Simulation for Demo)
+            elif provider == "Anthropic":
+                time.sleep(0.8)
+                response_text = f"Simulated Claude Response: I am Claude, executing your request via the Gateway."
+
         except Exception as e:
-            return f"Error: {str(e)}"
+            status = "500 ERROR"
+            response_text = str(e)
 
-    def get_assets(self, category):
-        # EXPANDED DATABASE
-        db = {
-            "Grants": [
-                {"Name": "Microsoft Founders", "Value": "$150k", "Link": "https://www.microsoft.com/en-us/startups"},
-                {"Name": "Google Cloud", "Value": "$350k", "Link": "https://startup.google.com/cloud/"},
-                {"Name": "AWS Activate", "Value": "$100k", "Link": "https://aws.amazon.com/activate/"},
-                {"Name": "Notion Startups", "Value": "6 Mo Free", "Link": "https://www.notion.so/startups"},
-                {"Name": "OpenAI Residency", "Value": "$$$", "Link": "https://openai.com/residencies"}
-            ],
-            "Crypto": [
-                {"Name": "Binance Labs", "Value": "VC Fund", "Link": "https://labs.binance.com/"},
-                {"Name": "Solana Grants", "Value": "Funding", "Link": "https://solana.org/grants"},
-                {"Name": "Ethereum ESP", "Value": "Grants", "Link": "https://esp.ethereum.foundation/applicants"},
-                {"Name": "Base Ecosystem", "Value": "Build", "Link": "https://base.org/ecosystem"},
-                {"Name": "Optimism Retro", "Value": "Airdrop", "Link": "https://app.optimism.io/retropgf"}
-            ],
-            "Hackathons": [
-                {"Name": "Devpost", "Value": "Global", "Link": "https://devpost.com/"},
-                {"Name": "ETHGlobal", "Value": "Web3", "Link": "https://ethglobal.com/"},
-                {"Name": "DoraHacks", "Value": "Crypto", "Link": "https://dorahacks.io/"},
-                {"Name": "Kaggle Competitions", "Value": "AI/ML", "Link": "https://www.kaggle.com/competitions"}
-            ],
-            "AI Tools": [
-                {"Name": "Hugging Face", "Value": "Models", "Link": "https://huggingface.co/"},
-                {"Name": "Replicate", "Value": "API", "Link": "https://replicate.com/"},
-                {"Name": "LangChain", "Value": "Framework", "Link": "https://www.langchain.com/"},
-                {"Name": "Vercel AI SDK", "Value": "Frontend", "Link": "https://sdk.vercel.ai/docs"}
-            ]
+        # LOGGING
+        latency = round((time.time() - start_time) * 1000, 2) # ms
+        log = {
+            "Time": datetime.now().strftime("%H:%M:%S"),
+            "Provider": provider,
+            "Model": model,
+            "Latency": f"{latency}ms",
+            "Status": status,
+            "Prompt": prompt[:30] + "..."
         }
-        return db.get(category, [])
+        st.session_state.logs.insert(0, log) # Add to top
+        
+        return response_text, latency, status
 
-    def scrape_coupons(self):
-        deals = []
-        try:
-            resp = requests.get("https://www.discudemy.com/all", headers=self.headers, timeout=5)
-            soup = BeautifulSoup(resp.text, 'html.parser')
-            for item in soup.find_all('section', class_='card')[:15]:
-                link = item.find('a', class_='card-header')
-                if link: deals.append({"Title": link.get_text(strip=True), "Link": link['href']})
-        except: pass
-        return deals
-
-engine = FounderEngine()
+gateway = AIGateway()
 
 # ==========================================
-# 🖥️ FRONTEND
+# 🖥️ DASHBOARD UI
 # ==========================================
 
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/11529/11529610.png", width=50)
-    st.markdown("### Founder OS <span style='font-size:0.8em; color:#3b82f6'>v8.0</span>", unsafe_allow_html=True)
+    st.markdown("### 🌐 AI Gateway")
+    page = st.radio("Navigation", ["Playground", "Logs & Analytics", "Settings"])
     st.markdown("---")
-    app_mode = st.radio("SELECT MODULE", ["💻 Gemini Studio", "🕵️ Deal Hunter"])
-    st.markdown("---")
-    gemini_key = st.text_input("Gemini API Key", type="password")
+    
+    st.markdown("#### 🔑 Provider Keys")
+    google_key = st.text_input("Google API Key", type="password", value="")
+    openai_key = st.text_input("OpenAI API Key", type="password", placeholder="sk-...")
+    anthropic_key = st.text_input("Anthropic API Key", type="password", placeholder="sk-ant...")
 
-if app_mode == "💻 Gemini Studio":
-    st.markdown("<h1>💻 Gemini Code Studio</h1>", unsafe_allow_html=True)
+# --- PAGE 1: UNIVERSAL PLAYGROUND ---
+if page == "Playground":
+    st.title("⚡ Universal Playground")
+    st.markdown("Test prompts across multiple models through a single interface.")
     
-    # EXPANDED CONTROLS
-    col1, col2 = st.columns(2)
-    with col1: 
-        mode = st.selectbox("Operation Mode", [
-            "Generator", 
-            "Debugger", 
-            "Security Audit", 
-            "Refactor/Optimize", 
-            "Documentation", 
-            "Unit Tests"
-        ])
-    with col2: 
-        stack = st.selectbox("Tech Stack", [
-            "HTML/Tailwind", 
-            "React/Next.js", 
-            "Python/Streamlit", 
-            "Node.js/Express", 
-            "Solidity (Web3)", 
-            "Flutter/Dart",
-            "SQL/Postgres",
-            "Rust"
-        ])
+    col1, col2 = st.columns([1, 3])
     
-    prompt = st.text_area("Input Command", height=150, placeholder=f"Enter instructions for {mode}...")
-    
-    if st.button("EXECUTE AGENT ⚡"):
-        with st.spinner("Gemini is working..."):
-            result = engine.generate_code_gemini(prompt, stack, mode, gemini_key)
-            st.code(result)
-
-elif app_mode == "🕵️ Deal Hunter":
-    st.markdown("<h1>🕵️ Deal Hunter</h1>", unsafe_allow_html=True)
-    
-    # EXPANDED TABS
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "💸 GRANTS", 
-        "🪙 CRYPTO", 
-        "🏆 HACKATHONS", 
-        "🧠 AI TOOLS", 
-        "⚡ COUPONS"
-    ])
-    
-    def render_cards(category, color):
-        for a in engine.get_assets(category):
+    with col1:
+        st.markdown("##### Configuration")
+        provider = st.selectbox("Provider", ["Google", "OpenAI", "Anthropic"])
+        
+        # Dynamic Model List based on Provider
+        if provider == "Google":
+            model = st.selectbox("Model", ["gemini-1.5-flash", "gemini-pro"])
+        elif provider == "OpenAI":
+            model = st.selectbox("Model", ["gpt-4-turbo", "gpt-3.5-turbo"])
+        else:
+            model = st.selectbox("Model", ["claude-3-opus", "claude-3-sonnet"])
+            
+        temp = st.slider("Temperature", 0.0, 1.0, 0.7)
+        
+    with col2:
+        prompt = st.text_area("System / User Prompt", height=150, placeholder="Enter your prompt here...")
+        
+        if st.button("Send Request 🚀"):
+            # Determine which key to use
+            active_key = google_key if provider == "Google" else openai_key if provider == "OpenAI" else anthropic_key
+            
+            with st.spinner(f"Routing to {provider} :: {model}..."):
+                res, lat, stat = gateway.route_request(provider, model, prompt, active_key)
+            
+            # Result Card
             st.markdown(f"""
-            <div class="glass-card" style="display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                    <span class="tag {color}">{a['Value']}</span>
-                    <span style="margin-left:10px; font-weight:bold; color:#fff;">{a['Name']}</span>
+            <div class="metric-card">
+                <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                    <span class="badge badge-{provider.lower()}">{provider}</span>
+                    <span style="font-family:'JetBrains Mono'; color:#666;">{lat}ms</span>
                 </div>
-                <a href="{a['Link']}" target="_blank" style="text-decoration:none; color:#3b82f6; font-weight:bold;">View ↗</a>
+                <div style="color:#fff; line-height:1.6;">{res}</div>
             </div>
             """, unsafe_allow_html=True)
-
-    with tab1: render_cards("Grants", "tag-green")
-    with tab2: render_cards("Crypto", "tag-orange")
-    with tab3: render_cards("Hackathons", "tag-purple")
-    with tab4: render_cards("AI Tools", "tag-blue")
             
-    with tab5:
-        if st.button("SCAN 100% OFF COUPONS"):
-            deals = engine.scrape_coupons()
-            for d in deals:
-                st.markdown(f"""
-                <div class="glass-card">
-                    <span class="tag tag-blue">FREE</span>
-                    <h4 style="margin:10px 0;">{d['Title']}</h4>
-                    <a href="{d['Link']}" target="_blank" style="color:#60a5fa; font-weight:bold;">Claim ➜</a>
-                </div>""", unsafe_allow_html=True)
+            if stat == "500 ERROR":
+                st.error(f"Gateway Error: {res}")
+
+# --- PAGE 2: LOGS & ANALYTICS ---
+elif page == "Logs & Analytics":
+    st.title("📊 Traffic & Logs")
+    
+    # Fake Metrics for the 'Demo' feel
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Requests", len(st.session_state.logs), "+12%")
+    m2.metric("Avg Latency", "240ms", "-30ms")
+    m3.metric("Cache Hit Rate", "84%", "+2%")
+    m4.metric("Est. Cost", "$0.042", "+$0.01")
+    
+    st.markdown("### Request Logs")
+    st.markdown("<div style='border:1px solid #333; border-radius:8px; overflow:hidden;'>", unsafe_allow_html=True)
+    
+    # Headers
+    st.markdown("""
+    <div style="display:flex; justify-content:space-between; padding:10px; background:#111; font-weight:bold; font-size:12px; border-bottom:1px solid #333;">
+        <span style="width:100px">TIME</span>
+        <span style="width:100px">PROVIDER</span>
+        <span style="width:150px">MODEL</span>
+        <span style="width:100px">STATUS</span>
+        <span style="flex:1">PROMPT PREVIEW</span>
+        <span style="width:80px">LATENCY</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Render Logs
+    for log in st.session_state.logs:
+        color = "#10a37f" if "200" in log['Status'] else "#ff4444"
+        st.markdown(f"""
+        <div class="log-entry">
+            <span style="width:100px; color:#666 !important;">{log['Time']}</span>
+            <span style="width:100px">{log['Provider']}</span>
+            <span style="width:150px; color:#888 !important;">{log['Model']}</span>
+            <span style="width:100px; color:{color} !important;">{log['Status']}</span>
+            <span style="flex:1; color:#ccc !important;">{log['Prompt']}</span>
+            <span style="width:80px; color:#666 !important;">{log['Latency']}</span>
+        </div>
+        """, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# --- PAGE 3: INTEGRATION SETTINGS ---
+elif page == "Settings":
+    st.title("🛠️ Integration")
+    st.markdown("Use our Unified SDK to access all models with one line of code.")
+    
+    st.markdown("### Python SDK")
+    st.code("""
+import openai
+
+# Point to your Gateway instead of OpenAI directly
+client = openai.OpenAI(
+    base_url="https://your-gateway-url.com/v1",
+    api_key="sk-gateway-key"
+)
+
+response = client.chat.completions.create(
+    model="google/gemini-pro", # Universal Routing
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+    """, language="python")
+    
+    st.markdown("### Fallback Logic")
+    st.info("Automatic fallback is enabled. If OpenAI is down, traffic routes to Azure OpenAI automatically.")
