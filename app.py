@@ -1,201 +1,260 @@
 import streamlit as st
 import feedparser
-import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 import pandas as pd
-import time
 import random
+import time
+import json
 
 # ==========================================
-# 🧠 THE BRAIN (Backend Logic)
+# 🧠 THE FOUNDER AGENT (Backend Logic)
 # ==========================================
 
-class DealHunterAgent:
+class FounderAgent:
     def __init__(self):
-        # We rotate User-Agents to look less like a robot
-        self.user_agents = [
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15',
-            'Mozilla/5.0 (Linux; Android 10; SM-A505FN) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.90 Mobile Safari/537.36'
-        ]
+        # cloudscraper pretends to be a real browser to bypass Cloudflare
+        self.scraper = cloudscraper.create_scraper(
+            browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False}
+        )
 
-    def _get_headers(self):
-        return {'User-Agent': random.choice(self.user_agents)}
+    def get_trending_ai_models(self):
+        """Fetches the hottest AI models trending on Hugging Face right now."""
+        # We access the hidden JSON API Hugging Face uses for their own UI
+        url = "https://huggingface.co/models-json?sort=trending&limit=10"
+        models = []
+        try:
+            response = self.scraper.get(url).json()
+            # The structure is a list of models
+            for model in response.get('models', [])[:10]:
+                models.append({
+                    "Name": model['id'],
+                    "Downloads": f"{model.get('downloads', 0):,}",
+                    "Likes": model.get('likes', 0),
+                    "Link": f"https://huggingface.co/{model['id']}",
+                    "Task": model.get('pipeline_tag', 'General AI')
+                })
+        except Exception as e:
+            print(f"Hugging Face Error: {e}")
+        return models
 
-    def get_rss_giveaways(self):
-        """Fetches from official RSS feeds (The most stable method)."""
-        feeds = [
-            ("Giveaway of the Day (Game)", "https://game.giveawayoftheday.com/feed/"),
-            ("Giveaway of the Day (Software)", "https://www.giveawayoftheday.com/feed/"),
-            ("SharewareOnSale", "http://feeds.feedburner.com/sharewareonsale"),
+    def get_product_hunt_hot(self):
+        """Gets the top products launching TODAY on Product Hunt."""
+        url = "https://www.producthunt.com/feed"
+        feed = feedparser.parse(url)
+        products = []
+        for entry in feed.entries[:8]:
+            products.append({
+                "Title": entry.title,
+                "Link": entry.link,
+                "Desc": BeautifulSoup(entry.summary, 'html.parser').get_text()[:200] + "..."
+            })
+        return products
+
+    def scrape_coupons_pro(self):
+        """Uses CloudScraper to bypass protection on coupon sites."""
+        sources = [
+            ("Discudemy", "https://www.discudemy.com/all"),
+            ("Real.Discount", "https://www.real.discount/udemy-coupon-code/")
         ]
         
-        deals = []
-        for source_name, url in feeds:
+        all_deals = []
+        
+        for name, url in sources:
             try:
-                feed = feedparser.parse(url)
-                for entry in feed.entries[:5]: # Top 5 from each
-                    deals.append({
-                        "Title": entry.title,
-                        "Source": source_name,
-                        "Link": entry.link,
-                        "Description": entry.summary[:150] + "..." if hasattr(entry, 'summary') else "Click to see details.",
-                        "Type": "RSS Feed"
-                    })
-            except Exception as e:
-                print(f"Error fetching {source_name}: {e}")
-        
-        return deals
-
-    def scrape_discudemy(self):
-        """Scrapes Discudemy for verified 100% OFF coupons."""
-        url = "https://www.discudemy.com/all"
-        deals = []
-        try:
-            response = requests.get(url, headers=self._get_headers(), timeout=10)
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Discudemy structure (this changes rarely)
-            items = soup.find_all('section', class_='card')
-            
-            for item in items[:10]:
-                title_tag = item.find('a', class_='card-header')
-                if title_tag:
-                    # Check if it says 'Free' or '100% off'
-                    # Discudemy usually lists valid free ones, but we double check label
-                    label = item.find('div', class_='ui label')
-                    if label and 'Free' in label.get_text():
-                        deals.append({
-                            "Title": title_tag.get_text(strip=True),
-                            "Source": "Discudemy",
-                            "Link": title_tag['href'], # Note: This links to their internal page, user clicks through
-                            "Category": "Education"
-                        })
-        except Exception:
-            # Silently fail if site blocks us, so app doesn't crash
-            pass
-        return deals
-
-    def scrape_real_discount(self):
-        """Scrapes Real.Discount for Udemy coupons."""
-        url = "https://www.real.discount/udemy-coupon-code/" 
-        deals = []
-        try:
-            response = requests.get(url, headers=self._get_headers(), timeout=10)
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Finding the list items
-            items = soup.find_all('div', class_='col-sm-12 col-md-6 col-lg-4')
-            
-            for item in items[:8]:
-                link_tag = item.find('a')
-                title_tag = item.find('h3')
+                response = self.scraper.get(url)
+                soup = BeautifulSoup(response.text, 'html.parser')
                 
-                if link_tag and title_tag:
-                    deals.append({
-                        "Title": title_tag.get_text(strip=True),
-                        "Source": "Real.Discount",
-                        "Link": "https://www.real.discount" + link_tag['href'] if link_tag['href'].startswith('/') else link_tag['href'],
-                        "Category": "Education"
-                    })
-        except Exception:
-            pass
-        return deals
+                if name == "Discudemy":
+                    items = soup.find_all('section', class_='card')
+                    for item in items[:8]:
+                        title = item.find('a', class_='card-header')
+                        if title:
+                            all_deals.append({
+                                "Title": title.get_text(strip=True),
+                                "Source": "Discudemy",
+                                "Link": title['href'],
+                                "Type": "Education"
+                            })
+                            
+                elif name == "Real.Discount":
+                    items = soup.find_all('div', class_='col-sm-12')
+                    for item in items[:8]:
+                        link_tag = item.find('a', href=True)
+                        title_tag = item.find('h3')
+                        if link_tag and title_tag:
+                            full_link = link_tag['href']
+                            if not full_link.startswith('http'):
+                                full_link = "https://www.real.discount" + full_link
+                                
+                            all_deals.append({
+                                "Title": title_tag.get_text(strip=True),
+                                "Source": "Real.Discount",
+                                "Link": full_link,
+                                "Type": "Education"
+                            })
+            except Exception as e:
+                print(f"Error scraping {name}: {e}")
+                
+        return all_deals
 
-    def get_student_pack(self):
+    def get_tech_giant_grants(self):
+        """The 'Secret' list of massive credits for Startups/Founders."""
         return [
-            {"Title": "GitHub Student Pack", "Desc": "Access to Canva Pro, Namecheap domains, and Azure credits.", "Link": "https://education.github.com/pack"},
-            {"Title": "Notion Education", "Desc": "Unlimited blocks and file uploads for free.", "Link": "https://www.notion.so/product/notion-for-education"},
-            {"Title": "JetBrains IDEs", "Desc": "Free PyCharm, IntelliJ, and WebStorm for students.", "Link": "https://www.jetbrains.com/community/education/#students"},
-            {"Title": "Amazon Prime Student", "Desc": "6 Months free Prime (Movies, Shipping).", "Link": "https://www.amazon.com/student"}
+            {
+                "Company": "Microsoft for Startups",
+                "Benefit": "Up to $150,000 Azure Credits + Free OpenAI API + GitHub Enterprise.",
+                "Req": "Open to anyone with an idea (no VC funding needed).",
+                "Link": "https://foundershub.startups.microsoft.com/signup"
+            },
+            {
+                "Company": "Google for Startups",
+                "Benefit": "Up to $350,000 credits for AI startups (or $2k for general).",
+                "Req": "Must have a domain and a working prototype.",
+                "Link": "https://startup.google.com/cloud/"
+            },
+            {
+                "Company": "AWS Activate Founders",
+                "Benefit": "$1,000 to $100,000 in AWS Credits.",
+                "Req": "Self-funded startups get $1k easily. VC-backed get $100k.",
+                "Link": "https://aws.amazon.com/activate/founders/"
+            },
+            {
+                "Company": "NVIDIA Inception",
+                "Benefit": "Discounts on GPUs, DLI Training, and Cloud Credits.",
+                "Req": "Must be an AI/Data Science startup.",
+                "Link": "https://www.nvidia.com/en-us/startups/"
+            }
         ]
 
 # ==========================================
 # 🖥️ THE DASHBOARD (Frontend)
 # ==========================================
 
-st.set_page_config(page_title="DealHunter Pro", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="Founder's Deal Hunter", page_icon="🚀", layout="wide")
 
-# Matrix/Cyberpunk Styling
+# Modern Dark UI
 st.markdown("""
 <style>
-    body {color: #e0e0e0; background-color: #121212;}
-    .stButton>button {width: 100%; border-radius: 5px; background: #222; border: 1px solid #333; color: #00ff41; transition: 0.3s;}
-    .stButton>button:hover {background: #00ff41; color: black; border-color: #00ff41;}
-    .deal-card {
-        background: #1e1e1e;
-        padding: 15px;
-        border-radius: 8px;
+    .stApp {background-color: #0E1117;}
+    .big-card {
+        background-color: #161b22;
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid #30363d;
         margin-bottom: 15px;
-        border-left: 4px solid #00ff41;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     }
-    .deal-card h4 {color: #ffffff; margin-top: 0;}
-    .deal-card a {color: #00ff41; text-decoration: none; font-weight: bold; border: 1px solid #00ff41; padding: 5px 10px; border-radius: 4px;}
-    .deal-card a:hover {background: #00ff41; color: black;}
-    .source-tag {font-size: 0.8em; color: #888; text-transform: uppercase; letter-spacing: 1px;}
+    .big-card:hover {border-color: #8b949e;}
+    .metric-value {font-size: 24px; font-weight: bold; color: #58a6ff;}
+    .metric-label {font-size: 14px; color: #8b949e;}
+    .tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: bold;
+        margin-right: 5px;
+    }
+    .tag-ai {background-color: #1f6feb; color: white;}
+    .tag-deal {background-color: #238636; color: white;}
+    .tag-hot {background-color: #d29922; color: black;}
+    a {text-decoration: none !important;}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚡ DealHunter Pro Agent")
-st.caption("Aggregating: GiveawayOfTheDay, SharewareOnSale, Discudemy, Real.Discount & GitHub")
+st.title("🚀 Founder's Deal Hunter")
+st.caption("Tracking: $500k+ in Grants | Hugging Face Trending | Product Hunt | 100% Off Coupons")
 
-agent = DealHunterAgent()
+agent = FounderAgent()
 
-# Interface Tabs
-tab_giveaways, tab_udemy, tab_students = st.tabs(["🎁 Software Giveaways", "📚 Udemy 100% Off", "🎓 Student Loot"])
+# The Tabs
+tab_ai, tab_grants, tab_ph, tab_coupons = st.tabs([
+    "🔥 Trending AI Models", 
+    "💸 Tech Giant Grants", 
+    "🦄 Product Hunt Hot", 
+    "🏷️ 100% Off Scraper"
+])
 
-with tab_giveaways:
-    if st.button("🔄 Scan RSS Feeds"):
-        with st.spinner("Connecting to global giveaway feeds..."):
-            items = agent.get_rss_giveaways()
-            if items:
-                for i in items:
+# --- TAB 1: AI MODELS ---
+with tab_ai:
+    st.header("What's Blowing Up on Hugging Face?")
+    if st.button("Refresh AI Trends"):
+        with st.spinner("Fetching data from Hugging Face API..."):
+            models = agent.get_trending_ai_models()
+            
+            # Display in a grid
+            cols = st.columns(2)
+            for idx, m in enumerate(models):
+                with cols[idx % 2]:
                     st.markdown(f"""
-                    <div class="deal-card">
-                        <span class="source-tag">{i['Source']}</span>
-                        <h4>{i['Title']}</h4>
-                        <p>{i['Description']}</p>
-                        <a href="{i['Link']}" target="_blank">GET IT FREE ➜</a>
+                    <div class="big-card">
+                        <span class="tag tag-ai">{m['Task']}</span>
+                        <h3>{m['Name']}</h3>
+                        <p>
+                            <span class="metric-value">⬇ {m['Downloads']}</span> <span class="metric-label">downloads</span>
+                            &nbsp;&nbsp;|&nbsp;&nbsp;
+                            <span class="metric-value">❤ {m['Likes']}</span> <span class="metric-label">likes</span>
+                        </p>
+                        <a href="{m['Link']}" target="_blank">
+                            <button style="background:#1f6feb;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;width:100%;">
+                                View Model ➜
+                            </button>
+                        </a>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+# [...](asc_slot://start-slot-1)--- TAB 2: GRANTS ---
+with tab_grants:
+    st.header("Startup Credits (The Big Money)")
+    st.info("💡 Pro Tip: Apply to Microsoft Founders Hub first. They accept almost everyone and give GPT-4 API access.")
+    
+    grants = agent.get_tech_giant_grants()
+    for g in grants:
+        st.markdown(f"""
+        <div class="big-card" style="border-left: 5px solid #a371f7;">
+            <h2>{g['Company']}</h2>
+            <p style="font-size:1.1em;">{g['Benefit']}</p>
+            <p style="color:#8b949e;"><i>Requirement: {g['Req']}</i></p>
+            <a href="{g['Link']}" target="_blank">
+                <button style="background:#238636;color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;">
+                    Apply Now ➜
+                </button>
+            </a>
+        </div>
+        """, unsafe_allow_html=True)
+
+# --- TAB 3: PRODUCT HUNT ---
+with tab_ph:
+    st.header("Launching Today on Product Hunt")
+    if st.button("Scan Product Hunt"):
+        with st.spinner("Scanning for unicorns..."):
+            products = agent.get_product_hunt_hot()
+            for p in products:
+                st.markdown(f"""
+                <div class="big-card">
+                    <span class="tag tag-hot">Today's Launch</span>
+                    <h4>{p['Title']}</h4>
+                    <p>{p['Desc']}</p>
+                    <a href="{p['Link']}" target="_blank">Check it out ➜</a>
+                </div>
+                """, unsafe_allow_html=True)
+
+# --- TAB 4: COUPONS ---
+with tab_coupons:
+    st.header("Scrape 100% Off Coupons")
+    st.caption("Powered by CloudScraper™ (Bypasses Cloudflare protection)")
+    
+    if st.button("Run Coupon Scraper Pro"):
+        with st.spinner("Hacking the matrix..."):
+            deals = agent.scrape_coupons_pro()
+            if deals:
+                for d in deals:
+                    st.markdown(f"""
+                    <div class="big-card">
+                        <span class="tag tag-deal">{d['Source']}</span>
+                        <h4>{d['Title']}</h4>
+                        <a href="{d['Link']}" target="_blank" style="color:#58a6ff;font-weight:bold;">GET LINK ➜</a>
                     </div>
                     """, unsafe_allow_html=True)
             else:
-                st.error("Connection failed. Check your internet.")
-
-with tab_udemy:
-    col1, col2 = st.columns([1,3])
-    with col1:
-        st.info("⚠️ Note: Some links may require you to click 'Take Course' on the aggregator site first.")
-    with col2:
-        if st.button("🔎 Hunt for Coupons"):
-            with st.spinner("Scraping Discudemy & Real.Discount..."):
-                all_coupons = []
-                
-                # Run Scrapers
-                all_coupons.extend(agent.scrape_discudemy())
-                time.sleep(1) # Be polite to the server
-                all_coupons.extend(agent.scrape_real_discount())
-                
-                if all_coupons:
-                    for c in all_coupons:
-                        st.markdown(f"""
-                        <div class="deal-card">
-                            <span class="source-tag">{c['Source']}</span>
-                            <h4>{c['Title']}</h4>
-                            <a href="{c['Link']}" target="_blank">ENROLL FREE ➜</a>
-                        </div>
-                        """, unsafe_allow_html=True)
-                else:
-                    st.warning("No coupons found. The sites might be protected by Cloudflare at this moment.")
-
-with tab_students:
-    st.markdown("### 🎓 Verified Student Packs")
-    packs = agent.get_student_pack()
-    for p in packs:
-        st.markdown(f"""
-        <div class="deal-card" style="border-left: 4px solid #ff0055;">
-            <h4>{p['Title']}</h4>
-            <p>{p['Desc']}</p>
-            <a href="{p['Link']}" style="color:#ff0055; border-color:#ff0055;" target="_blank">CLAIM OFFER ➜</a>
-        </div>
-        """, unsafe_allow_html=True)
+                st.error("Even CloudScraper got blocked! Try again in 5 minutes.")
