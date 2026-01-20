@@ -29,8 +29,8 @@ st.markdown("""
     .model-card.winner {border-color: #00ff41; box-shadow: 0 0 20px rgba(0, 255, 65, 0.2);}
     
     /* INPUTS */
-    .stTextInput input, .stTextArea textarea {
-        background: #000 !important; 
+    .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {
+        background-color: #000 !important; 
         border: 1px solid #333 !important; 
         color: #00ff41 !important;
     }
@@ -38,16 +38,12 @@ st.markdown("""
     /* HEADERS */
     h1, h2, h3 {color: #fff !important; text-transform: uppercase; letter-spacing: 2px;}
     
-    /* LOGS */
-    .log-console {
-        font-family: monospace;
-        font-size: 12px;
-        color: #888;
-        background: #000;
-        padding: 10px;
-        border-top: 1px solid #222;
-        height: 150px;
-        overflow-y: scroll;
+    /* BUTTONS */
+    .stButton>button {
+        background: #00ff41;
+        color: black !important;
+        border: none;
+        font-weight: bold;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -76,6 +72,20 @@ class GatewayEngine:
     def set_keys(self, hf, gemini):
         self.hf_token = hf
         self.gemini_key = gemini
+
+    def test_connection(self):
+        """Proves connection to Hugging Face"""
+        if not self.hf_token: return False, "No Token"
+        headers = {"Authorization": f"Bearer {self.hf_token}"}
+        try:
+            # Ping a small model just to check auth
+            api_url = f"https://api-inference.huggingface.co/models/microsoft/Phi-3-mini-4k-instruct"
+            r = requests.post(api_url, headers=headers, json={"inputs": "hi"})
+            if r.status_code == 200: return True, "Online"
+            elif r.status_code == 401: return False, "Invalid Token"
+            else: return False, f"Error {r.status_code}"
+        except:
+            return False, "Connection Failed"
 
     def query(self, model_name, prompt):
         start = time.time()
@@ -128,11 +138,14 @@ with st.sidebar:
     engine.set_keys(hf_key, gem_key)
     
     st.markdown("---")
-    st.markdown("### 📡 MODEL STATUS")
-    # Quick visual check of what's available
-    st.markdown("🟢 **Gemini Flash**")
-    st.markdown("🟢 **Llama-3** (Meta)")
-    st.markdown("🟡 **Falcon** (Loading...)")
+    st.markdown("### 📡 NETWORK STATUS")
+    
+    if st.button("TEST CONNECTION"):
+        status, msg = engine.test_connection()
+        if status:
+            st.success(f"Connected to Hugging Face Cloud! ({msg})")
+        else:
+            st.error(f"Connection Failed: {msg}")
 
 # HEADER
 st.title("⛩️ OMNI-GATEWAY")
@@ -161,4 +174,44 @@ with tab_single:
             </div>
             <div style="color:#ddd; line-height:1.6; white-space: pre-wrap;">{res}</div>
         </div>
-        """, unsafe_allow_htm
+        """, unsafe_allow_html=True)
+
+# --- TAB 2: BATTLE ARENA ---
+with tab_battle:
+    st.markdown("### ⚔️ MODEL COMPARISON")
+    c1, c2 = st.columns(2)
+    with c1:
+        model_a = st.selectbox("Fighter A", list(engine.models.keys()), index=0)
+    with c2:
+        model_b = st.selectbox("Fighter B", list(engine.models.keys()), index=1)
+        
+    battle_prompt = st.text_area("Battle Prompt", "Explain Quantum Computing in 1 sentence.", height=80)
+    
+    if st.button("FIGHT! ⚔️"):
+        c_res_1, c_res_2 = st.columns(2)
+        
+        # Fighter A
+        with c_res_1:
+            with st.spinner(f"{model_a} thinking..."):
+                res_a, lat_a = engine.query(model_a, battle_prompt)
+            st.markdown(f"""
+            <div class="model-card">
+                <h4 style="color:#888;">{model_a}</h4>
+                <p style="font-size:12px;">Speed: {lat_a:.2f}s</p>
+                <hr style="border-color:#333;">
+                <p style="color:#fff;">{res_a}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        # Fighter B
+        with c_res_2:
+            with st.spinner(f"{model_b} thinking..."):
+                res_b, lat_b = engine.query(model_b, battle_prompt)
+            st.markdown(f"""
+            <div class="model-card">
+                <h4 style="color:#888;">{model_b}</h4>
+                <p style="font-size:12px;">Speed: {lat_b:.2f}s</p>
+                <hr style="border-color:#333;">
+                <p style="color:#fff;">{res_b}</p>
+            </div>
+            """, unsafe_allow_html=True)
