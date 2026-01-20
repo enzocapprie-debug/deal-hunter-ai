@@ -18,25 +18,47 @@ class FounderAgent:
             browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False}
         )
 
-    def get_trending_ai_models(self):
+       def get_trending_ai_models(self):
         """Fetches the hottest AI models trending on Hugging Face right now."""
-        # We access the hidden JSON API Hugging Face uses for their own UI
-        url = "https://huggingface.co/models-json?sort=trending&limit=10"
+        # OFFICIAL API ENDPOINT (Much more stable)
+        url = "https://huggingface.co/api/trending?limit=10&type=model"
         models = []
         try:
+            # We use the scraper to be safe, but standard requests would likely work too
             response = self.scraper.get(url).json()
-            # The structure is a list of models
-            for model in response.get('models', [])[:10]:
+            
+            # The official API returns a list, not a dict with 'models' key
+            # We iterate through the list directly
+            for item in response[:10]:
+                # The actual model data is inside 'repoData'
+                data = item.get('repoData', {})
+                
                 models.append({
-                    "Name": model['id'],
-                    "Downloads": f"{model.get('downloads', 0):,}",
-                    "Likes": model.get('likes', 0),
-                    "Link": f"https://huggingface.co/{model['id']}",
-                    "Task": model.get('pipeline_tag', 'General AI')
+                    "Name": data.get('id', 'Unknown Model'),
+                    "Downloads": f"{data.get('downloads', 0):,}",
+                    "Likes": data.get('likes', 0),
+                    "Link": f"https://huggingface.co/{data.get('id', '')}",
+                    "Task": data.get('pipeline_tag', 'General AI')
                 })
         except Exception as e:
             print(f"Hugging Face Error: {e}")
+            # FALLBACK: If trending fails, get most downloaded in last 24h
+            try:
+                fallback_url = "https://huggingface.co/api/models?sort=downloads&direction=-1&limit=10"
+                fallback_resp = self.scraper.get(fallback_url).json()
+                for data in fallback_resp[:10]:
+                    models.append({
+                        "Name": data.get('id', 'Unknown Model'),
+                        "Downloads": f"{data.get('downloads', 0):,}",
+                        "Likes": data.get('likes', 0),
+                        "Link": f"https://huggingface.co/{data.get('id', '')}",
+                        "Task": data.get('pipeline_tag', 'General AI')
+                    })
+            except:
+                pass
+                
         return models
+
 
     def get_product_hunt_hot(self):
         """Gets the top products launching TODAY on Product Hunt."""
@@ -258,3 +280,4 @@ with tab_coupons:
                     """, unsafe_allow_html=True)
             else:
                 st.error("Even CloudScraper got blocked! Try again in 5 minutes.")
+
