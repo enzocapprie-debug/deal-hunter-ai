@@ -1,7 +1,7 @@
 streamlit
 feedparser
-requests
+cloudscraper
 beautifulsoup4
 pandas
-google-generativeai
-
+lxml
+requests
