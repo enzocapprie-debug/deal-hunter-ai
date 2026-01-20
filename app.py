@@ -4,11 +4,12 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
 # ==========================================
 # 🎨 UI & THEME ENGINE
 # ==========================================
-st.set_page_config(page_title="Founder OS v7 (Gemini)", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="Founder OS v7.1", page_icon="⚡", layout="wide")
 
 st.markdown("""
 <style>
@@ -56,7 +57,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🧠 BACKEND LOGIC (GEMINI UPGRADE)
+# 🧠 BACKEND LOGIC (GEMINI UNLOCKED)
 # ==========================================
 
 class FounderEngine:
@@ -68,9 +69,22 @@ class FounderEngine:
             return "⚠️ Error: Please enter your Google Gemini API Key in the sidebar."
         
         try:
-            # [...](asc_slot://start-slot-13)Configure Gemini
+            # Configure Gemini
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            
+            # UNLOCKING SAFETY FILTERS (The "Enterprise" Fix)
+            # This prevents false refusals for "hacking" or "crypto" topics
+            safety_settings = {
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            }
+            
+            model = genai.GenerativeModel(
+                model_name='gemini-1.5-flash',
+                safety_settings=safety_settings
+            )
             
             # Context Prompt
             system_instruction = f"You are an expert {stack} developer."
@@ -112,7 +126,7 @@ engine = FounderEngine()
 
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/11529/11529610.png", width=50)
-    st.markdown("### Founder OS <span style='font-size:0.8em; color:#3b82f6'>v7.0</span>", unsafe_allow_html=True)
+    st.markdown("### Founder OS <span style='font-size:0.8em; color:#3b82f6'>v7.1</span>", unsafe_allow_html=True)
     st.markdown("---")
     app_mode = st.radio("SELECT MODULE", ["💻 Gemini Studio", "🕵️ Deal Hunter"])
     st.markdown("---")
@@ -121,7 +135,7 @@ with st.sidebar:
 
 if app_mode == "💻 Gemini Studio":
     st.markdown("<h1>💻 Gemini Code Studio</h1>", unsafe_allow_html=True)
-    st.markdown("<p>Powered by Google Gemini 1.5 Flash</p>", unsafe_allow_html=True)
+    st.markdown("<p>Powered by Google Gemini 1.5 Flash (Unlocked)</p>", unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     with col1: mode = st.selectbox("Mode", ["Generator", "Debugger"])
@@ -138,7 +152,7 @@ elif app_mode == "🕵️ Deal Hunter":
     st.markdown("<h1>🕵️ Deal Hunter</h1>", unsafe_allow_html=True)
     tab1, tab2 = st.tabs(["💎 ASSETS", "⚡ LIVE COUPONS"])
     
-    [...](asc_slot://start-slot-15)with tab1:
+    with tab1:
         for a in engine.get_assets():
             st.markdown(f"""
             <div class="glass-card" style="display:flex; justify-content:space-between; align-items:center;">
