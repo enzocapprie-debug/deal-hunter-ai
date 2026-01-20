@@ -18,17 +18,16 @@ class FounderAgent:
             browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False}
         )
 
-       def get_trending_ai_models(self):
+    def get_trending_ai_models(self):
         """Fetches the hottest AI models trending on Hugging Face right now."""
         # OFFICIAL API ENDPOINT (Much more stable)
         url = "https://huggingface.co/api/trending?limit=10&type=model"
         models = []
         try:
-            # We use the scraper to be safe, but standard requests would likely work too
+            # We use the scraper to be safe
             response = self.scraper.get(url).json()
             
-            # The official API returns a list, not a dict with 'models' key
-            # We iterate through the list directly
+            # The official API returns a list, not a dict
             for item in response[:10]:
                 # The actual model data is inside 'repoData'
                 data = item.get('repoData', {})
@@ -59,18 +58,20 @@ class FounderAgent:
                 
         return models
 
-
     def get_product_hunt_hot(self):
         """Gets the top products launching TODAY on Product Hunt."""
         url = "https://www.producthunt.com/feed"
         feed = feedparser.parse(url)
         products = []
         for entry in feed.entries[:8]:
-            products.append({
-                "Title": entry.title,
-                "Link": entry.link,
-                "Desc": BeautifulSoup(entry.summary, 'html.parser').get_text()[:200] + "..."
-            })
+            try:
+                products.append({
+                    "Title": entry.title,
+                    "Link": entry.link,
+                    "Desc": BeautifulSoup(entry.summary, 'html.parser').get_text()[:200] + "..."
+                })
+            except:
+                continue
         return products
 
     def scrape_coupons_pro(self):
@@ -205,27 +206,30 @@ with tab_ai:
             models = agent.get_trending_ai_models()
             
             # Display in a grid
-            cols = st.columns(2)
-            for idx, m in enumerate(models):
-                with cols[idx % 2]:
-                    st.markdown(f"""
-                    <div class="big-card">
-                        <span class="tag tag-ai">{m['Task']}</span>
-                        <h3>{m['Name']}</h3>
-                        <p>
-                            <span class="metric-value">⬇ {m['Downloads']}</span> <span class="metric-label">downloads</span>
-                            &nbsp;&nbsp;|&nbsp;&nbsp;
-                            <span class="metric-value">❤ {m['Likes']}</span> <span class="metric-label">likes</span>
-                        </p>
-                        <a href="{m['Link']}" target="_blank">
-                            <button style="background:#1f6feb;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;width:100%;">
-                                View Model ➜
-                            </button>
-                        </a>
-                    </div>
-                    """, unsafe_allow_html=True)
+            if models:
+                cols = st.columns(2)
+                for idx, m in enumerate(models):
+                    with cols[idx % 2]:
+                        st.markdown(f"""
+                        <div class="big-card">
+                            <span class="tag tag-ai">{m['Task']}</span>
+                            <h3>{m['Name']}</h3>
+                            <p>
+                                <span class="metric-value">⬇ {m['Downloads']}</span> <span class="metric-label">downloads</span>
+                                &nbsp;&nbsp;|&nbsp;&nbsp;
+                                <span class="metric-value">❤ {m['Likes']}</span> <span class="metric-label">likes</span>
+                            </p>
+                            <a href="{m['Link']}" target="_blank">
+                                <button style="background:#1f6feb;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;width:100%;">
+                                    View Model ➜
+                                </button>
+                            </a>
+                        </div>
+                        """, unsafe_allow_html=True)
+            else:
+                st.warning("Could not fetch trends. Hugging Face API might be busy.")
 
-# [...](asc_slot://start-slot-1)--- TAB 2: GRANTS ---
+# --- TAB 2: GRANTS ---
 with tab_grants:
     st.header("Startup Credits (The Big Money)")
     st.info("💡 Pro Tip: Apply to Microsoft Founders Hub first. They accept almost everyone and give GPT-4 API access.")
@@ -280,4 +284,3 @@ with tab_coupons:
                     """, unsafe_allow_html=True)
             else:
                 st.error("Even CloudScraper got blocked! Try again in 5 minutes.")
-
