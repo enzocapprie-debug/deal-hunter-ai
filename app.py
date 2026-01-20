@@ -1,217 +1,228 @@
 import streamlit as st
+import feedparser
 import requests
-import google.generativeai as genai
-import time
+from bs4 import BeautifulSoup
 import pandas as pd
 
 # ==========================================
-# ⚙️ CONFIG & THEME
+# 🎨 UI OVERRIDE (Midnight Glass Theme)
 # ==========================================
-st.set_page_config(page_title="Omni-Gateway", page_icon="⛩️", layout="wide")
+st.set_page_config(page_title="Founder OS", page_icon="⚡", layout="wide")
 
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;600&display=swap');
-    
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+
+    /* BACKGROUND & FONT */
     .stApp {
-        background-color: #050505;
-        font-family: 'Space Grotesk', sans-serif;
+        background: radial-gradient(circle at 50% 10%, #1a1c2e 0%, #000000 100%);
+        font-family: 'Inter', sans-serif;
     }
     
-    /* NEON BORDERS */
-    .model-card {
-        border: 1px solid #333;
-        background: #111;
-        border-radius: 12px;
+    /* HIDE STREAMLIT UI */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+
+    /* GLASS CARDS */
+    .glass-card {
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
         padding: 20px;
-        height: 100%;
+        margin-bottom: 15px;
+        transition: transform 0.2s, box-shadow 0.2s;
     }
-    .model-card.winner {border-color: #00ff41; box-shadow: 0 0 20px rgba(0, 255, 65, 0.2);}
-    
-    /* INPUTS */
-    .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {
-        background-color: #000 !important; 
-        border: 1px solid #333 !important; 
-        color: #00ff41 !important;
+    .glass-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        border-color: rgba(255, 255, 255, 0.3);
     }
-    
-    /* HEADERS */
-    h1, h2, h3 {color: #fff !important; text-transform: uppercase; letter-spacing: 2px;}
-    
+
+    /* TYPOGRAPHY */
+    h1, h2, h3, h4 {color: #fff !important; font-weight: 800 !important; letter-spacing: -0.5px;}
+    p, span, div {color: #a0a0b0;}
+
     /* BUTTONS */
     .stButton>button {
-        background: #00ff41;
-        color: black !important;
+        background: linear-gradient(90deg, #4F46E5 0%, #7C3AED 100%);
+        color: white !important;
         border: none;
-        font-weight: bold;
+        border-radius: 8px;
+        font-weight: 600;
+        width: 100%;
     }
+    
+    /* TAGS */
+    .pro-tag {
+        display: inline-block; padding: 4px 12px; border-radius: 20px;
+        font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;
+    }
+    .tag-blue {background: rgba(59, 130, 246, 0.2); color: #60a5fa;}
+    .tag-purple {background: rgba(139, 92, 246, 0.2); color: #a78bfa;}
+    .tag-green {background: rgba(16, 185, 129, 0.2); color: #34d399;}
+    .tag-orange {background: rgba(245, 158, 11, 0.2); color: #fbbf24;}
+    
+    /* SPACING */
+    .block-container {padding-top: 2rem; padding-bottom: 5rem;}
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🔌 GATEWAY ENGINE
+# 🧠 AGENT LOGIC
 # ==========================================
 
-class GatewayEngine:
+class FounderAgent:
     def __init__(self):
-        self.hf_token = None
-        self.gemini_key = None
-        
-        # THE ARSENAL: Real Open Source Models
-        self.models = {
-            "Meta: Llama-3-70B": "meta-llama/Meta-Llama-3-70B-Instruct",
-            "Mistral: 7B-v0.3": "mistralai/Mistral-7B-Instruct-v0.3",
-            "Google: Gemma-7B": "google/gemma-7b-it",
-            "Microsoft: Phi-3-Mini": "microsoft/Phi-3-mini-4k-instruct",
-            "Nous: Hermes-2-Pro": "NousResearch/Hermes-2-Pro-Llama-3-8B",
-            "Qwen: 2-72B": "Qwen/Qwen2-72B-Instruct",
-            "TII: Falcon-11B": "tiiuae/falcon-11b",
-            "Google: Gemini-1.5-Flash": "gemini-1.5-flash" # Special Route
-        }
+        self.headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'}
 
-    def set_keys(self, hf, gemini):
-        self.hf_token = hf
-        self.gemini_key = gemini
-
-    def test_connection(self):
-        """Proves connection to Hugging Face"""
-        if not self.hf_token: return False, "No Token"
-        headers = {"Authorization": f"Bearer {self.hf_token}"}
+    def get_trending_ai(self):
+        url = "https://huggingface.co/api/trending?limit=10&type=model"
+        models = []
         try:
-            # Ping a small model just to check auth
-            api_url = f"https://api-inference.huggingface.co/models/microsoft/Phi-3-mini-4k-instruct"
-            r = requests.post(api_url, headers=headers, json={"inputs": "hi"})
-            if r.status_code == 200: return True, "Online"
-            elif r.status_code == 401: return False, "Invalid Token"
-            else: return False, f"Error {r.status_code}"
-        except:
-            return False, "Connection Failed"
+            resp = requests.get(url, headers=self.headers, timeout=5).json()
+            for item in resp:
+                repo = item.get('repoData', {})
+                models.append({
+                    "Name": repo.get('id', 'Unknown'),
+                    "Stats": f"⬇ {repo.get('downloads', 0):,}",
+                    "Link": f"https://huggingface.co/{repo.get('id', '')}",
+                    "Tag": repo.get('pipeline_tag', 'AI')
+                })
+        except: pass
+        if not models:
+            models = [
+                {"Name": "DeepSeek-R1", "Stats": "🔥 VIRAL", "Link": "https://huggingface.co/deepseek-ai/DeepSeek-R1", "Tag": "REASONING"},
+                {"Name": "Llama-3-70B", "Stats": "👑 META", "Link": "https://huggingface.co/meta-llama/Meta-Llama-3-70B", "Tag": "TEXT GEN"},
+                {"Name": "Flux.1-Dev", "Stats": "🎨 SOTA", "Link": "https://huggingface.co/black-forest-labs/FLUX.1-dev", "Tag": "IMAGE"}
+            ]
+        return models
 
-    def query(self, model_name, prompt):
-        start = time.time()
-        
-        # ROUTE 1: GOOGLE GEMINI
-        if "Gemini" in model_name:
-            if not self.gemini_key: return "⚠️ Error: Missing Gemini Key", 0
-            try:
-                genai.configure(api_key=self.gemini_key)
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                response = model.generate_content(prompt)
-                return response.text, time.time() - start
-            except Exception as e:
-                return f"Gemini Error: {str(e)}", 0
+    def get_grants(self):
+        return [
+            {"Name": "Microsoft Founders", "Value": "$150,000", "Desc": "Azure + OpenAI Keys", "Link": "https://www.microsoft.com/en-us/startups", "Tag": "TOP PICK"},
+            {"Name": "Google Cloud", "Value": "$350,000", "Desc": "AI Compute Credits", "Link": "https://startup.google.com/cloud/", "Tag": "HIGH VALUE"},
+            {"Name": "AWS Activate", "Value": "$100,000", "Desc": "Server Credits", "Link": "https://aws.amazon.com/activate/", "Tag": "STANDARD"},
+            {"Name": "NVIDIA Inception", "Value": "HARDWARE", "Desc": "GPU Access", "Link": "https://www.nvidia.com/en-us/startups/", "Tag": "HARDWARE"}
+        ]
 
-        # ROUTE 2: HUGGING FACE INFERENCE (The Open Source Army)
-        else:
-            if not self.hf_token: return "⚠️ Error: Missing HF Token", 0
-            api_url = f"https://api-inference.huggingface.co/models/{self.models[model_name]}"
-            headers = {"Authorization": f"Bearer {self.hf_token}"}
-            
-            try:
-                response = requests.post(api_url, headers=headers, json={"inputs": prompt, "parameters": {"max_new_tokens": 512}})
-                data = response.json()
-                
-                # Error Handling for loading models
-                if isinstance(data, dict) and "error" in data:
-                    return f"HF Error: {data['error']} (Model loading... try again in 30s)", 0
-                
-                # Text Extraction
-                if isinstance(data, list) and 'generated_text' in data[0]:
-                    # Some models repeat the prompt, we clean it
-                    full_text = data[0]['generated_text']
-                    return full_text.replace(prompt, "").strip(), time.time() - start
-                else:
-                    return str(data), 0
-            except Exception as e:
-                return f"Gateway Error: {str(e)}", 0
+    def get_crypto_loot(self):
+        return [
+            {"Name": "Binance Labs", "Type": "INVESTMENT", "Link": "https://labs.binance.com/", "Tag": "VC FUND"},
+            {"Name": "Solana Foundation", "Type": "GRANTS", "Link": "https://solana.org/grants", "Tag": "L1 CHAIN"},
+            {"Name": "Ethereum ESP", "Type": "FUNDING", "Link": "https://esp.ethereum.foundation/applicants", "Tag": "ECOSYSTEM"},
+            {"Name": "Web3 Grants Info", "Type": "DATABASE", "Link": "https://www.web3grants.info/", "Tag": "AGGREGATOR"}
+        ]
 
-engine = GatewayEngine()
+    def scrape_coupons(self):
+        url = "https://www.discudemy.com/all"
+        deals = []
+        try:
+            resp = requests.get(url, headers=self.headers, timeout=8)
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            items = soup.find_all('section', class_='card')
+            for item in items[:12]:
+                link = item.find('a', class_='card-header')
+                if link: deals.append({"Title": link.get_text(strip=True), "Link": link['href']})
+        except: pass
+        return deals
+
+    def get_product_hunt(self):
+        try:
+            feed = feedparser.parse("https://www.producthunt.com/feed")
+            return [{"Title": x.title, "Link": x.link} for x in feed.entries[:10]]
+        except: return []
 
 # ==========================================
-# 🖥️ DASHBOARD
+# 🖥️ FRONTEND
 # ==========================================
 
-with st.sidebar:
-    st.markdown("### ⛩️ API KEYS")
-    hf_key = st.text_input("Hugging Face Token", type="password", help="Get free at huggingface.co/settings/tokens")
-    gem_key = st.text_input("Gemini API Key", type="password")
-    engine.set_keys(hf_key, gem_key)
-    
-    st.markdown("---")
-    st.markdown("### 📡 NETWORK STATUS")
-    
-    if st.button("TEST CONNECTION"):
-        status, msg = engine.test_connection()
-        if status:
-            st.success(f"Connected to Hugging Face Cloud! ({msg})")
+agent = FounderAgent()
+
+st.markdown("<h1>⚡ Founder OS <span style='color:#7C3AED; font-size:0.6em; vertical-align:middle;'>v4.1</span></h1>", unsafe_allow_html=True)
+st.markdown("<p style='font-size: 1.1em; opacity: 0.8;'>Command Center: AI, Web3, Grants & Deals</p>", unsafe_allow_html=True)
+st.markdown("---")
+
+# 5 TABS - RESTORED & COMPLETE
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["🧠 AI RADAR", "💸 GRANTS", "🪙 CRYPTO", "🦄 LAUNCHES", "🏷️ DEALS"])
+
+with tab1:
+    col1, col2 = st.columns([3, 1])
+    with col1: st.subheader("Trending Models")
+    with col2: 
+        if st.button("REFRESH DATA"): st.rerun()
+    models = agent.get_trending_ai()
+    cols = st.columns(2)
+    for i, m in enumerate(models):
+        with cols[i % 2]:
+            st.markdown(f"""
+            <div class="glass-card">
+                <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                    <span class="pro-tag tag-purple">{m['Tag']}</span>
+                    <span style="font-size:0.8em; opacity:0.6;">{m['Stats']}</span>
+                </div>
+                <h3 style="font-size:1.2em; margin:0 0 10px 0;">{m['Name']}</h3>
+                <a href="{m['Link']}" target="_blank" style="text-decoration:none;">
+                    <div style="background:rgba(255,255,255,0.1); text-align:center; padding:8px; border-radius:6px; color:white; font-size:0.9em; font-weight:600;">View Model ↗</div>
+                </a>
+            </div>""", unsafe_allow_html=True)
+
+with tab2:
+    st.subheader("Capital & Credits")
+    grants = agent.get_grants()
+    cols = st.columns(2)
+    for i, g in enumerate(grants):
+        with cols[i % 2]:
+            st.markdown(f"""
+            <div class="glass-card">
+                <div style="margin-bottom:10px;"><span class="pro-tag tag-green">{g['Tag']}</span></div>
+                <h2 style="color:#34d399 !important; font-size:1.8em; margin:0;">{g['Value']}</h2>
+                <h3 style="font-size:1.1em; margin-top:5px;">{g['Name']}</h3>
+                <p style="font-size:0.9em;">{g['Desc']}</p>
+                <a href="{g['Link']}" target="_blank" style="text-decoration:none;">
+                    <div style="background:linear-gradient(90deg, #059669, #10B981); text-align:center; padding:10px; border-radius:6px; color:white; font-weight:bold;">Apply Now ➜</div>
+                </a>
+            </div>""", unsafe_allow_html=True)
+
+with tab3:
+    st.subheader("Web3 & Crypto Opportunities")
+    loot = agent.get_crypto_loot()
+    cols = st.columns(2)
+    for i, l in enumerate(loot):
+        with cols[i % 2]:
+            st.markdown(f"""
+            <div class="glass-card">
+                <div style="margin-bottom:10px;"><span class="pro-tag tag-orange">{l['Tag']}</span></div>
+                <h3 style="font-size:1.3em; margin:0 0 5px 0;">{l['Name']}</h3>
+                <p style="font-size:0.9em; margin-bottom:15px;">Focus: {l['Type']}</p>
+                <a href="{l['Link']}" target="_blank" style="text-decoration:none;">
+                    <div style="border:1px solid #fbbf24; text-align:center; padding:8px; border-radius:6px; color:#fbbf24; font-weight:bold;">Access Portal ➜</div>
+                </a>
+            </div>""", unsafe_allow_html=True)
+
+with tab4:
+    st.subheader("Product Hunt Live")
+    if st.button("SCAN FEED"):
+        products = agent.get_product_hunt()
+        for p in products:
+            st.markdown(f"""
+            <div class="glass-card" style="padding:15px; display:flex; justify-content:space-between; align-items:center;">
+                <div style="font-weight:600; font-size:1.1em; color:#fff;">{p['Title']}</div>
+                <a href="{p['Link']}" target="_blank" style="color:#7C3AED; text-decoration:none; font-weight:bold;">Check it out ➜</a>
+            </div>""", unsafe_allow_html=True)
+
+with tab5:
+    st.subheader("100% Off Coupons")
+    if st.button("FIND DEALS"):
+        deals = agent.scrape_coupons()
+        if deals:
+            for d in deals:
+                st.markdown(f"""
+                <div class="glass-card">
+                    <h4 style="color:#fff; margin:0 0 10px 0;">{d['Title']}</h4>
+                    <a href="{d['Link']}" target="_blank" style="text-decoration:none; color:#60a5fa; font-weight:bold; font-size:0.9em;">CLAIM OFFER ➜</a>
+                </div>""", unsafe_allow_html=True)
         else:
-            st.error(f"Connection Failed: {msg}")
-
-# HEADER
-st.title("⛩️ OMNI-GATEWAY")
-st.markdown("Unified Interface for **Meta, Google, Microsoft, Mistral, & Qwen** models.")
-
-# TABS
-tab_single, tab_battle = st.tabs(["🚀 SINGLE PROMPT", "⚔️ BATTLE ARENA"])
-
-# --- TAB 1: SINGLE MODEL ---
-with tab_single:
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        selected_model = st.selectbox("Select Model", list(engine.models.keys()))
-    with col2:
-        prompt = st.text_area("Input Prompt", height=100)
-    
-    if st.button("EXECUTE REQUEST", key="btn1"):
-        with st.spinner(f"Routing to {selected_model}..."):
-            res, lat = engine.query(selected_model, prompt)
-            
-        st.markdown(f"""
-        <div class="model-card">
-            <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
-                <span style="color:#00ff41; font-weight:bold;">{selected_model}</span>
-                <span style="color:#666;">Latency: {lat:.2f}s</span>
-            </div>
-            <div style="color:#ddd; line-height:1.6; white-space: pre-wrap;">{res}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-# --- TAB 2: BATTLE ARENA ---
-with tab_battle:
-    st.markdown("### ⚔️ MODEL COMPARISON")
-    c1, c2 = st.columns(2)
-    with c1:
-        model_a = st.selectbox("Fighter A", list(engine.models.keys()), index=0)
-    with c2:
-        model_b = st.selectbox("Fighter B", list(engine.models.keys()), index=1)
-        
-    battle_prompt = st.text_area("Battle Prompt", "Explain Quantum Computing in 1 sentence.", height=80)
-    
-    if st.button("FIGHT! ⚔️"):
-        c_res_1, c_res_2 = st.columns(2)
-        
-        # Fighter A
-        with c_res_1:
-            with st.spinner(f"{model_a} thinking..."):
-                res_a, lat_a = engine.query(model_a, battle_prompt)
-            st.markdown(f"""
-            <div class="model-card">
-                <h4 style="color:#888;">{model_a}</h4>
-                <p style="font-size:12px;">Speed: {lat_a:.2f}s</p>
-                <hr style="border-color:#333;">
-                <p style="color:#fff;">{res_a}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        # Fighter B
-        with c_res_2:
-            with st.spinner(f"{model_b} thinking..."):
-                res_b, lat_b = engine.query(model_b, battle_prompt)
-            st.markdown(f"""
-            <div class="model-card">
-                <h4 style="color:#888;">{model_b}</h4>
-                <p style="font-size:12px;">Speed: {lat_b:.2f}s</p>
-                <hr style="border-color:#333;">
-                <p style="color:#fff;">{res_b}</p>
-            </div>
-            """, unsafe_allow_html=True)
+            st.info("No coupons found. Try again later.")
